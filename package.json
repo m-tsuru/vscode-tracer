@@ -4,7 +4,7 @@
   "description": "Transform your VS Code Local History into a structured Git timeline. Track every edit and reconstruct your commit history back in time.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.108.1"
+    "vscode": "^1.108.0"
   },
   "categories": [
     "Other"
