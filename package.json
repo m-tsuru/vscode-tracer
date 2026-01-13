@@ -1,6 +1,7 @@
 {
-  "name": "vscode-tracer",
-  "displayName": "tracer",
+  "name": "tracer",
+  "publisher": "Michiru Tsurumaru, Sasakulab",
+  "displayName": "Tracer",
   "description": "Transform your VS Code Local History into a structured Git timeline. Track every edit and reconstruct your commit history back in time.",
   "version": "0.0.1",
   "engines": {
@@ -34,15 +35,18 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.108.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.52.0",
-    "eslint": "^9.39.2",
+    "@types/vscode": "^1.108.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.2",
+    "eslint": "^9.39.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.52.0"
+  },
+  "dependencies": {
+    "duckdb": "^1.4.3"
   }
 }
