@@ -1,0 +1,51 @@
+body {
+    padding: 0;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* 履歴パネル（左側） */
+.history-panel {
+    width: 300px;
+    border-right: 1px solid var(--vscode-panel-border);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 差分ビューア（右側） */
+.diff-viewer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--vscode-editor-background);
+}
+
+header {
+    padding: 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.diff-content {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+#diff-editor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}

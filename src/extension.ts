@@ -46,7 +46,11 @@ export function activate(context: vscode.ExtensionContext) {
                 {
                     enableScripts: true,
                     // Webview内のリソース読み込みを許可するフォルダを指定
-                    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+                    localResourceRoots: [
+                        vscode.Uri.joinPath(context.extensionUri, 'node_modules'),
+                        vscode.Uri.joinPath(context.extensionUri, 'src'),
+                        vscode.Uri.joinPath(context.extensionUri, 'media')
+                    ]
                 }
             );
 

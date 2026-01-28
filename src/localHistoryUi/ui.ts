@@ -7,7 +7,13 @@ export function getWebviewContent(context: vscode.ExtensionContext, webview: vsc
     let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
 
     const toolkitUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'node_modules', 'vscode-elements', 'dist', 'vscode-elements.js')
+        vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js')
+    );
+    const monacoBaseUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'node_modules', 'monaco-editor')
+    );
+    const monacoLoaderUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'node_modules', 'monaco-editor', 'min', 'vs', 'loader.js')
     );
     const scriptUri = webview.asWebviewUri(
         vscode.Uri.joinPath(context.extensionUri, 'src', 'localHistoryUi', 'resources', 'main.js')
@@ -16,10 +22,12 @@ export function getWebviewContent(context: vscode.ExtensionContext, webview: vsc
         vscode.Uri.joinPath(context.extensionUri, 'src', 'localHistoryUi', 'resources', 'style.css')
     );
 
-    html = html.replace('${toolkitUri}', toolkitUri.toString());
-    html = html.replace('${scriptUri}', scriptUri.toString());
-    html = html.replace('${styleUri}', styleUri.toString());
-    html = html.replace('${cspSource}', webview.cspSource);
+    html = html.replace(/\${toolkitUri}/g, toolkitUri.toString());
+    html = html.replace(/\${scriptUri}/g, scriptUri.toString());
+    html = html.replace(/\${styleUri}/g, styleUri.toString());
+    html = html.replace(/\${cspSource}/g, webview.cspSource);
+    html = html.replace(/\${monacoBaseUri}/g, monacoBaseUri.toString());
+    html = html.replace(/\${monacoLoaderUri}/g, monacoLoaderUri.toString());
 
     return html;
 }
