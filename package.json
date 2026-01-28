@@ -15,10 +15,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "vscode-tracer.helloWorld",
-        "title": "Hello World"
+        "command": "vscode-tracer.openHistoryView",
+        "title": "Open History View",
+        "icon": "$(arrow-swap)"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "vscode-tracer.openHistoryView",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
