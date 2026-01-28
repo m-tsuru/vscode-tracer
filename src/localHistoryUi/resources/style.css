@@ -8,24 +8,41 @@ body {
 
 .container {
     display: flex;
+    flex-direction: column;
     flex: 1;
     overflow: hidden;
 }
 
-/* 履歴パネル（左側） */
+/* 履歴パネル（上部） */
 .history-panel {
-    width: 300px;
-    border-right: 1px solid var(--vscode-panel-border);
+    height: 200px;
+    min-height: 80px;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
-/* 差分ビューア（右側） */
+/* リサイザー */
+.resizer {
+    height: 4px;
+    background-color: var(--vscode-panel-border);
+    cursor: ns-resize;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease;
+}
+
+.resizer:hover,
+.resizer.dragging {
+    background-color: var(--vscode-focusBorder);
+}
+
+/* 差分ビューア（下部） */
 .diff-viewer {
     flex: 1;
     display: flex;
     flex-direction: column;
     background-color: var(--vscode-editor-background);
+    overflow: hidden;
 }
 
 header {
