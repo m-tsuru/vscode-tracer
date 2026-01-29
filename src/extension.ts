@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { getWebviewContent } from "./localHistoryUi/ui";
 import { gitService, localHistoryService, diffService, LocalHistoryEntry } from "./services";
 
@@ -88,28 +89,60 @@ export async function activate(context: vscode.ExtensionContext) {
             const currentFileUri = activeEditor.document.uri;
             const fileName = currentFileUri.fsPath.split('/').pop() || 'Unknown';
 
-            // ローカル履歴を取得
-            const allHistoryEntries = await localHistoryService.getHistoryForFile(currentFileUri);
+            // 最初のエディタ参照を保持（リフレッシュ時にも使用）
+            let initialEditor = activeEditor;
 
-            // HEAD コミット情報を取得
-            const headInfo = await gitService.getHeadCommitInfo(currentFileUri);
-            const headCommitDate = headInfo?.commitDate;
+            // 履歴データを取得する関数
+            async function loadHistoryData() {
+                // ローカル履歴を取得
+                const allHistoryEntries = await localHistoryService.getHistoryForFile(currentFileUri);
 
-            // デバッグログ
-            console.log('[Tracer] HEAD commit info:', headInfo);
-            console.log('[Tracer] HEAD commit date:', headCommitDate?.toISOString());
-            console.log('[Tracer] All history entries count:', allHistoryEntries.length);
-            if (allHistoryEntries.length > 0) {
-                console.log('[Tracer] Latest history entry date:', allHistoryEntries[0].timestamp.toISOString());
+                // HEAD コミット情報を取得
+                const headInfo = await gitService.getHeadCommitInfo(currentFileUri);
+                const headCommitDate = headInfo?.commitDate;
+
+                // デバッグログ
+                console.log('[Tracer] HEAD commit info:', headInfo);
+                console.log('[Tracer] HEAD commit date:', headCommitDate?.toISOString());
+                console.log('[Tracer] All history entries count:', allHistoryEntries.length);
+                if (allHistoryEntries.length > 0) {
+                    console.log('[Tracer] Latest history entry date:', allHistoryEntries[0].timestamp.toISOString());
+                }
+
+                // HEAD のコミット日時以降の履歴エントリをフィルタリング
+                // headCommitDate が undefined の場合は全ての履歴を表示
+                let filteredEntries = headCommitDate
+                    ? allHistoryEntries.filter(entry => entry.timestamp.getTime() >= headCommitDate.getTime())
+                    : allHistoryEntries;
+
+                // 現在のエディタの内容を仮想エントリとして常に追加
+                // （まだ entries.json に書き込まれていない最新の編集を反映）
+                // 最初に保持したエディタか、現在見つかるエディタを使用
+                const currentEditor = vscode.window.visibleTextEditors.find(
+                    editor => editor.document.uri.fsPath === currentFileUri.fsPath
+                ) || initialEditor;
+
+                console.log('[Tracer] Current editor found:', !!currentEditor, 'URI matches:', currentEditor?.document.uri.fsPath === currentFileUri.fsPath);
+
+                if (currentEditor && currentEditor.document.uri.fsPath === currentFileUri.fsPath) {
+                    const virtualEntry: LocalHistoryEntry = {
+                        uri: currentFileUri,
+                        originalPath: diffService.toRelativePath(currentFileUri.fsPath),
+                        timestamp: new Date(),
+                        source: 'Current Change',
+                        historyFilePath: currentFileUri.fsPath
+                    };
+                    filteredEntries = [virtualEntry, ...filteredEntries];
+                    console.log('[Tracer] Added virtual entry for current editor content');
+                }
+
+                console.log('[Tracer] Filtered history entries count:', filteredEntries.length);
+
+                return { allHistoryEntries, filteredEntries, headInfo, headCommitDate };
             }
 
-            // HEAD のコミット日時より新しい履歴エントリのみをフィルタリング
-            // headCommitDate が undefined の場合は全ての履歴を表示
-            const historyEntries = headCommitDate
-                ? allHistoryEntries.filter(entry => entry.timestamp.getTime() > headCommitDate.getTime())
-                : allHistoryEntries;
-
-            console.log('[Tracer] Filtered history entries count:', historyEntries.length);
+            // 初回読み込み
+            let { filteredEntries: historyEntries, headInfo, headCommitDate } = await loadHistoryData();
 
             const panel = vscode.window.createWebviewPanel(
                 'diffViewer',
@@ -127,13 +160,34 @@ export async function activate(context: vscode.ExtensionContext) {
 
             panel.webview.html = getWebviewContent(context, panel.webview);
 
-            // 履歴データを Webview に送信するための変換
-            const historyData = historyEntries.map((entry, index) => ({
-                id: index,
-                timestamp: entry.timestamp.toISOString(),
-                source: entry.source,
-                uri: entry.uri.toString(),
-            }));
+            // 履歴データを Webview 送信用に変換する関数
+            function convertHistoryData(entries: LocalHistoryEntry[]) {
+                return entries.map((entry, index) => ({
+                    id: index,
+                    timestamp: entry.timestamp.toISOString(),
+                    source: entry.source,
+                    uri: entry.uri.toString(),
+                    historyFileName: path.basename(entry.historyFilePath),
+                }));
+            }
+
+            // 履歴データを Webview に送信する関数
+            async function sendHistoryData() {
+                const relativePath = diffService.toRelativePath(currentFileUri.fsPath);
+                const headContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri);
+                const historyData = convertHistoryData(historyEntries);
+
+                panel.webview.postMessage({
+                    command: 'setHistoryData',
+                    data: historyData,
+                    fileName: fileName,
+                    filePath: relativePath,
+                    head: headInfo?.hash || 'HEAD',
+                    headCommitDate: headCommitDate?.toISOString() || null,
+                    headContent: headContent || '',
+                    language: getLanguageId(fileName)
+                });
+            }
 
             // 選択された履歴エントリを追跡
             let selectedEntries: LocalHistoryEntry[] = [];
@@ -149,22 +203,28 @@ export async function activate(context: vscode.ExtensionContext) {
                             config: getEditorConfig()
                         });
 
-                        // HEAD コミットのファイル内容を取得
-                        {
-                            const relativePath = diffService.toRelativePath(currentFileUri.fsPath);
-                            const headContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri);
+                        // 履歴データを送信
+                        await sendHistoryData();
+                        break;
 
-                            // 履歴データを送信
-                            panel.webview.postMessage({
-                                command: 'setHistoryData',
-                                data: historyData,
-                                fileName: fileName,
-                                filePath: relativePath,
-                                head: headInfo?.hash || 'HEAD',
-                                headCommitDate: headCommitDate?.toISOString() || null,
-                                headContent: headContent || '',
-                                language: getLanguageId(fileName)
-                            });
+                    case 'refresh':
+                        // 履歴データを再読み込み
+                        {
+                            console.log('[Tracer] Refreshing history data...');
+                            const result = await loadHistoryData();
+                            historyEntries = result.filteredEntries;
+                            headInfo = result.headInfo;
+                            headCommitDate = result.headCommitDate;
+                            console.log('[Tracer] Loaded', historyEntries.length, 'history entries');
+
+                            // 選択状態をリセット
+                            selectedEntries = [];
+
+                            // 履歴データを再送信
+                            await sendHistoryData();
+                            console.log('[Tracer] History data sent to webview');
+
+                            vscode.window.showInformationMessage('History refreshed');
                         }
                         break;
 
@@ -182,7 +242,20 @@ export async function activate(context: vscode.ExtensionContext) {
                             const originalContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri);
 
                             // modified: 履歴エントリの内容
-                            const modifiedContent = await localHistoryService.getHistoryContent(historyEntries[historyIndex]);
+                            let modifiedContent: string | undefined;
+                            const historyEntry = historyEntries[historyIndex];
+
+                            if (historyEntry.source === 'Current Change') {
+                                // 仮想エントリの場合、エディタから直接内容を取得
+                                const currentEditor = vscode.window.visibleTextEditors.find(
+                                    editor => editor.document.uri.fsPath === currentFileUri.fsPath
+                                ) || initialEditor;
+                                modifiedContent = currentEditor?.document.getText();
+                                console.log('[Tracer] Retrieved content from current editor, length:', modifiedContent?.length);
+                            } else {
+                                // 通常の履歴エントリ
+                                modifiedContent = await localHistoryService.getHistoryContent(historyEntry);
+                            }
 
                             console.log('[Tracer] originalContent (HEAD) length:', originalContent?.length);
                             console.log('[Tracer] modifiedContent (history) length:', modifiedContent?.length);
@@ -223,7 +296,21 @@ export async function activate(context: vscode.ExtensionContext) {
                             }
 
                             // 選択された履歴エントリの内容を取得
-                            const historyContent = await localHistoryService.getHistoryContent(selectedEntries[0]);
+                            let historyContent: string | undefined;
+                            const selectedEntry = selectedEntries[0];
+
+                            if (selectedEntry.source === 'Current Change') {
+                                // 仮想エントリの場合、エディタから直接内容を取得
+                                const currentEditor = vscode.window.visibleTextEditors.find(
+                                    editor => editor.document.uri.fsPath === currentFileUri.fsPath
+                                ) || initialEditor;
+                                historyContent = currentEditor?.document.getText();
+                                console.log('[Tracer] Retrieved content from current editor for staging, length:', historyContent?.length);
+                            } else {
+                                // 通常の履歴エントリ
+                                historyContent = await localHistoryService.getHistoryContent(selectedEntry);
+                            }
+
                             if (historyContent === undefined) {
                                 vscode.window.showErrorMessage('Failed to read history content');
                                 return;
@@ -280,8 +367,14 @@ export async function activate(context: vscode.ExtensionContext) {
                         {
                             const entry = historyEntries[message.index];
                             if (entry) {
-                                const doc = await vscode.workspace.openTextDocument(entry.uri);
-                                await vscode.window.showTextDocument(doc, { preview: true });
+                                if (entry.source === 'Current Change') {
+                                    // 仮想エントリの場合、現在のファイルを表示
+                                    await vscode.window.showTextDocument(currentFileUri, { preview: true });
+                                } else {
+                                    // 通常の履歴エントリ
+                                    const doc = await vscode.workspace.openTextDocument(entry.uri);
+                                    await vscode.window.showTextDocument(doc, { preview: true });
+                                }
                             }
                         }
                         break;

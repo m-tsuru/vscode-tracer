@@ -201,6 +201,7 @@ window.addEventListener('message', (event) => {
         break;
 
     case 'setHistoryData':
+        console.log('[Tracer] Received setHistoryData with', message.data?.length, 'entries');
         renderHistoryList(message.data, message.fileName, message.filePath, message.head, message.headCommitDate);
         // HEAD の内容を diff エディタに表示
         if (message.headContent !== undefined && diffEditor) {
@@ -252,11 +253,13 @@ let diffSizes = {}; // index => { additions, deletions }
  * 履歴リストをレンダリング
  */
 function renderHistoryList(data, fileName, filePath, head, commitDate) {
+    console.log('[Tracer] renderHistoryList called with', data?.length, 'entries');
     historyData = data || [];
     currentFileName = fileName || '';
     currentFilePath = filePath || '';
     headCommit = head || 'HEAD';
     headCommitDate = commitDate ? new Date(commitDate) : null;
+    diffSizes = {}; // diff サイズをリセット
 
     const tableBody = document.getElementById('history-table-body');
     const panelTitle = document.getElementById('panel-title');
@@ -281,11 +284,12 @@ function renderHistoryList(data, fileName, filePath, head, commitDate) {
                 <vscode-checkbox class="row-checkbox" data-index="-1" checked disabled></vscode-checkbox>
             </vscode-table-cell>
             <vscode-table-cell><strong>HEAD</strong> (${headCommit.substring(0, 7)})</vscode-table-cell>
+            <vscode-table-cell>&ndash;</vscode-table-cell>
             <vscode-table-cell>${headDateStr}</vscode-table-cell>
             <vscode-table-cell>&ndash;</vscode-table-cell>
             <vscode-table-cell>
                 <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="-1">
-                    <vscode-icon name="eye"></vscode-icon>
+                    <span class="codicon codicon-eye"></span>
                 </vscode-button>
             </vscode-table-cell>
         </vscode-table-row>
@@ -305,17 +309,19 @@ function renderHistoryList(data, fileName, filePath, head, commitDate) {
         const diffSize = diffSizes[originalIndex];
         const diffSizeStr = diffSize ? `<span class="additions">+${diffSize.additions}</span> <span class="deletions">-${diffSize.deletions}</span>` : '&ndash;';
 
+        const historyFileName = entry.historyFileName || '&ndash;';
         html += `
             <vscode-table-row data-index="${originalIndex}">
                 <vscode-table-cell>
                     <vscode-checkbox class="row-checkbox" data-index="${originalIndex}"></vscode-checkbox>
                 </vscode-table-cell>
                 <vscode-table-cell>${entry.source}</vscode-table-cell>
+                <vscode-table-cell><code>${historyFileName}</code></vscode-table-cell>
                 <vscode-table-cell>${formattedDate}</vscode-table-cell>
                 <vscode-table-cell>${diffSizeStr}</vscode-table-cell>
                 <vscode-table-cell>
                     <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="${originalIndex}">
-                        <vscode-icon name="eye"></vscode-icon>
+                        <span class="codicon codicon-eye"></span>
                     </vscode-button>
                 </vscode-table-cell>
             </vscode-table-row>
@@ -477,6 +483,11 @@ function updateDiffStats(additions, deletions) {
 // ステージボタン
 document.getElementById('stage-btn')?.addEventListener('click', () => {
     vscode.postMessage({ command: 'stageDiff' });
+});
+
+// リフレッシュボタン
+document.getElementById('refresh-btn')?.addEventListener('click', () => {
+    vscode.postMessage({ command: 'refresh' });
 });
 
 // VS Code Diff で開くボタン

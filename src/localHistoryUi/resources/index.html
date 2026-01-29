@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline' 'unsafe-eval' blob:; worker-src ${cspSource} blob:; font-src ${cspSource} data:;">
+    <link rel="stylesheet" href="${codiconsUri}">
     <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
@@ -22,6 +23,7 @@
                 <vscode-table-header slot="header">
                     <vscode-table-header-cell></vscode-table-header-cell>
                     <vscode-table-header-cell>SOURCE</vscode-table-header-cell>
+                    <vscode-table-header-cell>HISTORY FILE</vscode-table-header-cell>
                     <vscode-table-header-cell>CREATE DATE</vscode-table-header-cell>
                     <vscode-table-header-cell>DIFF SIZE</vscode-table-header-cell>
                     <vscode-table-header-cell>Open</vscode-table-header-cell>

@@ -129,21 +129,3 @@ vscode-table-cell .deletions {
 .diff-stats .deletions {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
-
-/* Codicon スタイル（アイコン用） */
-.codicon {
-    font-family: codicon;
-    font-size: 16px;
-}
-
-.codicon-refresh::before {
-    content: "\\eb37";
-}
-
-.codicon-eye::before {
-    content: "\\ea70";
-}
-
-.codicon-check::before {
-    content: "\\eab2";
-}

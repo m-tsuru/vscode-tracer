@@ -55,13 +55,18 @@ export class LocalHistoryService {
     /**
      * 特定のファイルのローカル履歴エントリを取得
      * @param fileUri 対象ファイルのURI
+     * @param forceReload 強制的に最新データを読み込む（デフォルト: true）
      */
-    async getHistoryForFile(fileUri: vscode.Uri): Promise<LocalHistoryEntry[]> {
+    async getHistoryForFile(fileUri: vscode.Uri, forceReload: boolean = true): Promise<LocalHistoryEntry[]> {
         const entries: LocalHistoryEntry[] = [];
+
+        console.log('[LocalHistoryService] Reading history for:', fileUri.fsPath);
+        console.log('[LocalHistoryService] History base path:', this.historyBasePath);
 
         try {
             // History ディレクトリ内のすべてのサブディレクトリをスキャン
             const historyDirs = await fs.promises.readdir(this.historyBasePath, { withFileTypes: true });
+            console.log('[LocalHistoryService] Found', historyDirs.length, 'history directories');
 
             for (const dir of historyDirs) {
                 if (!dir.isDirectory()) {continue;}
@@ -69,13 +74,21 @@ export class LocalHistoryService {
                 const entriesJsonPath = path.join(this.historyBasePath, dir.name, 'entries.json');
 
                 try {
+                    // ファイルの統計情報を取得（最終更新日時確認用）
+                    const stats = await fs.promises.stat(entriesJsonPath);
+                    console.log(`[LocalHistoryService] Reading ${entriesJsonPath} (modified: ${stats.mtime.toISOString()})`);
+
                     const entriesContent = await fs.promises.readFile(entriesJsonPath, 'utf-8');
                     const entriesData = JSON.parse(entriesContent);
 
                     // このディレクトリが対象ファイルの履歴かどうかを確認
                     if (entriesData.resource && this.matchesFile(entriesData.resource, fileUri)) {
+                        console.log('[LocalHistoryService] Matched file! Resource:', entriesData.resource);
+                        console.log('[LocalHistoryService] Raw entries count:', entriesData.entries?.length || 0);
+
                         // 各履歴エントリを処理
                         if (entriesData.entries && Array.isArray(entriesData.entries)) {
+                            console.log('[LocalHistoryService] Processing entries:');
                             for (const entry of entriesData.entries) {
                                 const historyFilePath = path.join(
                                     this.historyBasePath,
@@ -83,24 +96,29 @@ export class LocalHistoryService {
                                     entry.id
                                 );
 
+                                const timestamp = new Date(entry.timestamp);
+                                console.log(`  - Entry ID: ${entry.id}, Timestamp: ${timestamp.toISOString()}, Source: ${entry.source || 'auto'}`);
+
                                 entries.push({
                                     uri: vscode.Uri.file(historyFilePath),
                                     originalPath: this.extractRelativePath(entriesData.resource, fileUri),
-                                    timestamp: new Date(entry.timestamp),
-                                    source: entry.source || 'auto',
+                                    timestamp: timestamp,
+                                    source: entry.source || 'Auto Save',
                                     historyFilePath
                                 });
                             }
                         }
                     }
-                } catch {
+                } catch (err) {
                     // entries.json が存在しないか読み取れない場合はスキップ
                     continue;
                 }
             }
         } catch (error) {
-            console.error('Failed to read local history:', error);
+            console.error('[LocalHistoryService] Failed to read local history:', error);
         }
+
+        console.log('[LocalHistoryService] Total entries found:', entries.length);
 
         // 日時の降順でソート（新しい順）
         return entries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());

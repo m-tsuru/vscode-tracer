@@ -21,10 +21,14 @@ export function getWebviewContent(context: vscode.ExtensionContext, webview: vsc
     const styleUri = webview.asWebviewUri(
         vscode.Uri.joinPath(context.extensionUri, 'src', 'localHistoryUi', 'resources', 'style.css')
     );
+    const codiconsUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css')
+    );
 
     html = html.replace(/\${toolkitUri}/g, toolkitUri.toString());
     html = html.replace(/\${scriptUri}/g, scriptUri.toString());
     html = html.replace(/\${styleUri}/g, styleUri.toString());
+    html = html.replace(/\${codiconsUri}/g, codiconsUri.toString());
     html = html.replace(/\${cspSource}/g, webview.cspSource);
     html = html.replace(/\${monacoBaseUri}/g, monacoBaseUri.toString());
     html = html.replace(/\${monacoLoaderUri}/g, monacoLoaderUri.toString());

@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@vscode-elements/elements": "^2.4.0",
+    "@vscode/codicons": "^0.0.44",
     "diff": "^8.0.3",
     "duckdb": "^1.4.3",
     "monaco-editor": "0.55.1"
