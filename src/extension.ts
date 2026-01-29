@@ -89,7 +89,27 @@ export async function activate(context: vscode.ExtensionContext) {
             const fileName = currentFileUri.fsPath.split('/').pop() || 'Unknown';
 
             // ローカル履歴を取得
-            const historyEntries = await localHistoryService.getHistoryForFile(currentFileUri);
+            const allHistoryEntries = await localHistoryService.getHistoryForFile(currentFileUri);
+
+            // HEAD コミット情報を取得
+            const headInfo = await gitService.getHeadCommitInfo(currentFileUri);
+            const headCommitDate = headInfo?.commitDate;
+
+            // デバッグログ
+            console.log('[Tracer] HEAD commit info:', headInfo);
+            console.log('[Tracer] HEAD commit date:', headCommitDate?.toISOString());
+            console.log('[Tracer] All history entries count:', allHistoryEntries.length);
+            if (allHistoryEntries.length > 0) {
+                console.log('[Tracer] Latest history entry date:', allHistoryEntries[0].timestamp.toISOString());
+            }
+
+            // HEAD のコミット日時より新しい履歴エントリのみをフィルタリング
+            // headCommitDate が undefined の場合は全ての履歴を表示
+            const historyEntries = headCommitDate 
+                ? allHistoryEntries.filter(entry => entry.timestamp.getTime() > headCommitDate.getTime())
+                : allHistoryEntries;
+
+            console.log('[Tracer] Filtered history entries count:', historyEntries.length);
 
             const panel = vscode.window.createWebviewPanel(
                 'diffViewer',
@@ -128,49 +148,60 @@ export async function activate(context: vscode.ExtensionContext) {
                             command: 'setEditorConfig',
                             config: getEditorConfig()
                         });
-                        // 履歴データも送信
-                        panel.webview.postMessage({
-                            command: 'setHistoryData',
-                            data: historyData,
-                            fileName: fileName,
-                            filePath: diffService.toRelativePath(currentFileUri.fsPath),
-                            head: gitService.getHeadCommit(currentFileUri) || 'HEAD'
-                        });
+
+                        // HEAD コミットのファイル内容を取得
+                        {
+                            const relativePath = diffService.toRelativePath(currentFileUri.fsPath);
+                            const headContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri);
+
+                            // 履歴データを送信
+                            panel.webview.postMessage({
+                                command: 'setHistoryData',
+                                data: historyData,
+                                fileName: fileName,
+                                filePath: relativePath,
+                                head: headInfo?.hash || 'HEAD',
+                                headCommitDate: headCommitDate?.toISOString() || null,
+                                headContent: headContent || '',
+                                language: getLanguageId(fileName)
+                            });
+                        }
                         break;
 
                     case 'requestDiff':
-                        // 2つの履歴エントリ間の差分を要求
+                        // HEAD と履歴エントリの差分を要求
+                        // diff 元 (original): 常に HEAD (Git の最新コミット)
+                        // diff 先 (modified): 選択した履歴エントリ
                         {
-                            const { oldIndex, newIndex } = message;
-                            let oldContent: string | undefined;
-                            let newContent: string | undefined;
+                            const { historyIndex } = message;
+                            const relativePath = diffService.toRelativePath(currentFileUri.fsPath);
 
-                            if (oldIndex === -1) {
-                                // 現在のファイルと比較
-                                newContent = await localHistoryService.getCurrentContent(currentFileUri);
-                            } else {
-                                newContent = await localHistoryService.getHistoryContent(historyEntries[newIndex]);
-                            }
+                            console.log('[Tracer] requestDiff received, historyIndex:', historyIndex);
 
-                            if (newIndex === -1) {
-                                oldContent = await localHistoryService.getCurrentContent(currentFileUri);
-                            } else {
-                                oldContent = await localHistoryService.getHistoryContent(historyEntries[oldIndex]);
-                            }
+                            // original: HEAD (Git の最新コミット時点のファイル内容)
+                            const originalContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri);
 
-                            if (oldContent !== undefined && newContent !== undefined) {
+                            // modified: 履歴エントリの内容
+                            const modifiedContent = await localHistoryService.getHistoryContent(historyEntries[historyIndex]);
+
+                            console.log('[Tracer] originalContent (HEAD) length:', originalContent?.length);
+                            console.log('[Tracer] modifiedContent (history) length:', modifiedContent?.length);
+
+                            if (originalContent !== undefined && modifiedContent !== undefined) {
                                 const stats = diffService.calculateDiffStats(
-                                    diffService.createUnifiedDiff(oldContent, newContent, fileName)
+                                    diffService.createUnifiedDiff(originalContent, modifiedContent, fileName)
                                 );
 
                                 panel.webview.postMessage({
                                     command: 'setDiff',
-                                    original: oldContent,
-                                    modified: newContent,
+                                    original: originalContent,
+                                    modified: modifiedContent,
                                     filename: fileName,
                                     language: getLanguageId(fileName),
                                     stats: stats
                                 });
+                            } else {
+                                console.error('[Tracer] Failed to get content:', { originalContent: !!originalContent, modifiedContent: !!modifiedContent });
                             }
                         }
                         break;

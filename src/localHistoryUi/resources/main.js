@@ -179,15 +179,9 @@ function createOrUpdateDiffEditor(config = {}) {
         // 新規作成
         diffEditor = monaco.editor.createDiffEditor(container, options);
 
-        // 初期表示用のサンプルデータ
-        const originalModel = monaco.editor.createModel(
-            '// 古いコード\nfunction hello() {\n    console.log("Hello");\n}\n',
-            'typescript'
-        );
-        const modifiedModel = monaco.editor.createModel(
-            '// 新しいコード\nfunction hello() {\n    console.log("Hello, World!");\n}\n\nfunction goodbye() {\n    console.log("Goodbye!");\n}\n',
-            'typescript'
-        );
+        // 初期表示用の空モデル（後で setHistoryData で更新される）
+        const originalModel = monaco.editor.createModel('', 'plaintext');
+        const modifiedModel = monaco.editor.createModel('', 'plaintext');
 
         diffEditor.setModel({
             original: originalModel,
@@ -207,7 +201,18 @@ window.addEventListener('message', (event) => {
         break;
 
     case 'setHistoryData':
-        renderHistoryList(message.data, message.fileName, message.filePath, message.head);
+        renderHistoryList(message.data, message.fileName, message.filePath, message.head, message.headCommitDate);
+        // HEAD の内容を diff エディタに表示
+        if (message.headContent !== undefined && diffEditor) {
+            const language = message.language || 'plaintext';
+            const originalModel = monaco.editor.createModel(message.headContent, language);
+            const modifiedModel = monaco.editor.createModel(message.headContent, language);
+            diffEditor.setModel({
+                original: originalModel,
+                modified: modifiedModel,
+            });
+            document.getElementById('diff-filename').textContent = message.fileName || '-';
+        }
         break;
 
     case 'setDiff':
@@ -240,16 +245,18 @@ let selectedIndices = new Set();
 let currentFileName = '';
 let currentFilePath = '';
 let headCommit = '';
+let headCommitDate = null;
 let diffSizes = {}; // index => { additions, deletions }
 
 /**
  * 履歴リストをレンダリング
  */
-function renderHistoryList(data, fileName, filePath, head) {
+function renderHistoryList(data, fileName, filePath, head, commitDate) {
     historyData = data || [];
     currentFileName = fileName || '';
     currentFilePath = filePath || '';
     headCommit = head || 'HEAD';
+    headCommitDate = commitDate ? new Date(commitDate) : null;
 
     const tableBody = document.getElementById('history-table-body');
     const panelTitle = document.getElementById('panel-title');
@@ -264,14 +271,17 @@ function renderHistoryList(data, fileName, filePath, head) {
     selectedIndices.clear();
     selectedIndices.add(-1);
 
-    // 先頭行: 現在のコミット HEAD（初期状態でチェック済み）
+    // HEADのコミット日時をフォーマット
+    const headDateStr = headCommitDate ? formatDate(headCommitDate) : '現在';
+
+    // 先頭行: 現在のコミット HEAD（常に選択状態、無効化）
     let html = `
         <vscode-table-row data-index="-1" selected>
             <vscode-table-cell>
-                <vscode-checkbox class="row-checkbox" data-index="-1" checked></vscode-checkbox>
+                <vscode-checkbox class="row-checkbox" data-index="-1" checked disabled></vscode-checkbox>
             </vscode-table-cell>
             <vscode-table-cell><strong>HEAD</strong> (${headCommit.substring(0, 7)})</vscode-table-cell>
-            <vscode-table-cell>現在</vscode-table-cell>
+            <vscode-table-cell>${headDateStr}</vscode-table-cell>
             <vscode-table-cell>&ndash;</vscode-table-cell>
             <vscode-table-cell>
                 <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="-1">
@@ -281,22 +291,30 @@ function renderHistoryList(data, fileName, filePath, head) {
         </vscode-table-row>
     `;
 
-    historyData.forEach((entry, index) => {
+    // CREATE DATE 順（古い順=昇順）でソート
+    // HEAD を起点として、古い履歴から新しい履歴の順に表示
+    const sortedHistoryData = [...historyData].sort((a, b) => {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+
+    sortedHistoryData.forEach((entry, sortedIndex) => {
+        // 元のインデックスを取得（extension.ts との通信に使用）
+        const originalIndex = historyData.indexOf(entry);
         const date = new Date(entry.timestamp);
         const formattedDate = formatDate(date);
-        const diffSize = diffSizes[index];
+        const diffSize = diffSizes[originalIndex];
         const diffSizeStr = diffSize ? `<span class="additions">+${diffSize.additions}</span> <span class="deletions">-${diffSize.deletions}</span>` : '&ndash;';
 
         html += `
-            <vscode-table-row data-index="${index}">
+            <vscode-table-row data-index="${originalIndex}">
                 <vscode-table-cell>
-                    <vscode-checkbox class="row-checkbox" data-index="${index}"></vscode-checkbox>
+                    <vscode-checkbox class="row-checkbox" data-index="${originalIndex}"></vscode-checkbox>
                 </vscode-table-cell>
                 <vscode-table-cell>${entry.source}</vscode-table-cell>
                 <vscode-table-cell>${formattedDate}</vscode-table-cell>
                 <vscode-table-cell>${diffSizeStr}</vscode-table-cell>
                 <vscode-table-cell>
-                    <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="${index}">
+                    <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="${originalIndex}">
                         <vscode-icon name="eye"></vscode-icon>
                     </vscode-button>
                 </vscode-table-cell>
@@ -311,30 +329,16 @@ function renderHistoryList(data, fileName, filePath, head) {
 }
 
 /**
- * 日付をフォーマット
+ * 日付を YYYY/MM/DD HH:MM:SS 形式でフォーマット
  */
 function formatDate(date) {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    // 24時間以内なら相対時間
-    if (diff < 24 * 60 * 60 * 1000) {
-        const hours = Math.floor(diff / (60 * 60 * 1000));
-        const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
-        if (hours > 0) {
-            return `${hours}時間前`;
-        }
-        return `${minutes}分前`;
-    }
-
-    // それ以外は日時
-    return date.toLocaleString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
 /**
@@ -344,17 +348,45 @@ function setupHistoryListeners() {
     const tableBody = document.getElementById('history-table-body');
     if (!tableBody) {return;}
 
-    // チェックボックス変更イベント
-    tableBody.querySelectorAll('.row-checkbox').forEach((checkbox) => {
-        checkbox.addEventListener('change', (e) => {
-            const index = parseInt(e.target.dataset.index, 10);
-            if (e.target.checked) {
+    // 履歴エントリのチェックボックス（HEAD以外）
+    // ラジオボタンのように1つだけ選択可能
+    tableBody.querySelectorAll('.row-checkbox:not([disabled])').forEach((checkbox) => {
+        const handleCheckboxChange = () => {
+            const index = parseInt(checkbox.dataset.index, 10);
+            const isChecked = checkbox.checked || checkbox.hasAttribute('checked');
+            console.log('[Tracer] Checkbox changed:', index, 'checked:', isChecked);
+
+            if (isChecked) {
+                // 他の履歴エントリの選択を解除（HEADは除く）
+                selectedIndices.forEach((i) => {
+                    if (i !== -1 && i !== index) {
+                        selectedIndices.delete(i);
+                        // UIも更新
+                        const otherCheckbox = tableBody.querySelector(`.row-checkbox[data-index="${i}"]`);
+                        if (otherCheckbox) {
+                            otherCheckbox.checked = false;
+                            otherCheckbox.removeAttribute('checked');
+                        }
+                    }
+                });
                 selectedIndices.add(index);
             } else {
                 selectedIndices.delete(index);
             }
+
+            console.log('[Tracer] selectedIndices after:', Array.from(selectedIndices));
             updateSelectionUI();
             requestDiffForSelection();
+        };
+
+        // vscode-elements のカスタムイベント
+        checkbox.addEventListener('vsc-change', handleCheckboxChange);
+        // フォールバック: 標準の change イベント
+        checkbox.addEventListener('change', handleCheckboxChange);
+        // フォールバック: click イベント
+        checkbox.addEventListener('click', (e) => {
+            // click 後に状態が更新されるのを待つ
+            setTimeout(handleCheckboxChange, 0);
         });
     });
 
@@ -390,10 +422,12 @@ function updateSelectionUI() {
         }
     });
 
-    // ステージボタンの有効/無効
+    // ステージボタンの有効/無効（HEAD + 履歴エントリ1つが選択されている時に有効）
     const stageBtn = document.getElementById('stage-btn');
     if (stageBtn) {
-        stageBtn.disabled = selectedIndices.size < 2;
+        // HEAD以外の選択があるかチェック
+        const hasHistorySelection = Array.from(selectedIndices).some(i => i >= 0);
+        stageBtn.disabled = !hasHistorySelection;
     }
 
     // 選択されたインデックスを拡張機能に通知
@@ -405,36 +439,25 @@ function updateSelectionUI() {
 
 /**
  * 選択に基づいて差分を要求
+ * diff 元: 常に HEAD (Git の最新コミット)
+ * diff 先: 選択した履歴エントリ
  */
 function requestDiffForSelection() {
-    const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+    // HEAD 以外の選択されたインデックスを取得
+    const historyIndex = Array.from(selectedIndices).find(i => i >= 0);
+    console.log('[Tracer] requestDiffForSelection, historyIndex:', historyIndex);
 
-    if (indices.length < 2) {
-        // 1つだけ選択されている場合、現在のファイルとの差分を表示
-        if (indices.length === 1) {
-            const index = indices[0];
-            if (index === -1) {
-                // 現在のファイルのみ選択 → 差分なし
-                return;
-            }
-            // 履歴エントリと現在のファイルの差分
-            vscode.postMessage({
-                command: 'requestDiff',
-                oldIndex: index,
-                newIndex: -1
-            });
-        }
+    if (historyIndex === undefined) {
+        // 履歴エントリが選択されていない → diff なし
+        console.log('[Tracer] No history entry selected, no diff');
         return;
     }
 
-    // 2つ以上選択されている場合、最も古いものと最も新しいものの差分
-    const oldIndex = indices[indices.length - 1]; // 最も古い（インデックスが大きい）
-    const newIndex = indices[0]; // 最も新しい（インデックスが小さい or -1）
-
+    // HEAD (original) vs 履歴エントリ (modified)
+    console.log('[Tracer] Requesting diff: HEAD vs history entry', historyIndex);
     vscode.postMessage({
         command: 'requestDiff',
-        oldIndex,
-        newIndex
+        historyIndex: historyIndex
     });
 }
 

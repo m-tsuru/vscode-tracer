@@ -17,6 +17,7 @@ interface Repository {
     apply(patch: string, reverse?: boolean): Promise<void>;
     add(paths: string[]): Promise<void>;
     commit(message: string): Promise<void>;
+    log(options?: { maxEntries?: number; path?: string }): Promise<Commit[]>;
     state: RepositoryState;
     inputBox: InputBox;
 }
@@ -39,6 +40,16 @@ interface Change {
 
 interface InputBox {
     value: string;
+}
+
+interface Commit {
+    hash: string;
+    message: string;
+    parents: string[];
+    authorDate?: Date;
+    authorName?: string;
+    authorEmail?: string;
+    commitDate?: Date;
 }
 
 /**
@@ -169,6 +180,35 @@ export class GitService {
     getHeadCommit(workspaceUri?: vscode.Uri): string | undefined {
         const repo = this.getRepository(workspaceUri);
         return repo?.state.HEAD?.commit;
+    }
+
+    /**
+     * HEAD コミットの詳細情報を取得（コミット日時含む）
+     */
+    async getHeadCommitInfo(workspaceUri?: vscode.Uri): Promise<{ hash: string; commitDate: Date | undefined } | undefined> {
+        const repo = this.getRepository(workspaceUri);
+        if (!repo) {
+            return undefined;
+        }
+
+        try {
+            const commits = await repo.log({ maxEntries: 1 });
+            console.log('[GitService] log result:', commits);
+            if (commits.length > 0) {
+                const commit = commits[0];
+                console.log('[GitService] commit object:', commit);
+                console.log('[GitService] commitDate:', commit.commitDate);
+                console.log('[GitService] authorDate:', commit.authorDate);
+                return {
+                    hash: commit.hash,
+                    // commitDate がない場合は authorDate を使用
+                    commitDate: commit.commitDate || commit.authorDate
+                };
+            }
+        } catch (error) {
+            console.error('Failed to get HEAD commit info:', error);
+        }
+        return undefined;
     }
 }
 
