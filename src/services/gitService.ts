@@ -1,4 +1,11 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 // VS Code Git 拡張機能の API 型定義
 interface GitExtension {
@@ -106,35 +113,68 @@ export class GitService {
     async getFileContent(ref: string, filePath: string, workspaceUri?: vscode.Uri): Promise<string | undefined> {
         const repo = this.getRepository(workspaceUri);
         if (!repo) {
+            console.error('[GitService] No repository found');
             return undefined;
         }
 
         try {
-            return await repo.show(ref, filePath);
+            console.log(`[GitService] Getting file content for ${ref}:${filePath}`);
+            const content = await repo.show(ref, filePath);
+            console.log(`[GitService] Content length: ${content?.length}`);
+            return content;
         } catch (error) {
-            console.error(`Failed to get file content for ${ref}:${filePath}:`, error);
-            return undefined;
+            // ファイルがまだコミットされていない場合は空文字を返す
+            console.error(`[GitService] Failed to get file content for ${ref}:${filePath}:`, error);
+            return '';
         }
     }
 
     /**
      * パッチをステージングエリアに適用（ワークツリーは変更しない）
+     * git apply --cached を直接実行
      * @param patch Unified Diff 形式のパッチ
      */
     async applyPatchToIndex(patch: string, workspaceUri?: vscode.Uri): Promise<boolean> {
         const repo = this.getRepository(workspaceUri);
         if (!repo) {
+            console.error('[GitService] No repository found');
             return false;
         }
 
+        // 一時ファイルにパッチを書き出す
+        const tempDir = os.tmpdir();
+        const tempPatchFile = path.join(tempDir, `vscode-tracer-patch-${Date.now()}.patch`);
+
         try {
-            // git apply --cached を実行
-            await repo.apply(patch);
+            // パッチを一時ファイルに書き出し
+            await fs.promises.writeFile(tempPatchFile, patch, 'utf-8');
+            console.log('[GitService] Patch file written to:', tempPatchFile);
+            console.log('[GitService] Patch content:\n', patch);
+
+            // git apply --cached を直接実行
+            const repoPath = repo.rootUri.fsPath;
+            console.log('[GitService] Repository path:', repoPath);
+
+            const { stdout, stderr } = await execFileAsync('git', ['apply', '--cached', tempPatchFile], {
+                cwd: repoPath
+            });
+
+            if (stdout) {console.log('[GitService] stdout:', stdout);}
+            if (stderr) {console.log('[GitService] stderr:', stderr);}
+
             return true;
-        } catch (error) {
-            console.error('Failed to apply patch:', error);
-            vscode.window.showErrorMessage(`Failed to apply patch: ${error}`);
+        } catch (error: unknown) {
+            console.error('[GitService] Failed to apply patch:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to apply patch: ${errorMessage}`);
             return false;
+        } finally {
+            // 一時ファイルを削除
+            try {
+                await fs.promises.unlink(tempPatchFile);
+            } catch {
+                // 削除に失敗しても無視
+            }
         }
     }
 
@@ -170,6 +210,51 @@ export class GitService {
             return true;
         } catch (error) {
             console.error('Failed to commit:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 日時を指定してコミットを実行
+     * @param message コミットメッセージ
+     * @param date コミット日時
+     */
+    async commitWithDate(message: string, date: Date, workspaceUri?: vscode.Uri): Promise<boolean> {
+        const repo = this.getRepository(workspaceUri);
+        if (!repo) {
+            console.error('[GitService] No repository found');
+            return false;
+        }
+
+        try {
+            const repoPath = repo.rootUri.fsPath;
+            const dateString = date.toISOString();
+
+            console.log('[GitService] Committing with date:', dateString);
+
+            // git commit --date オプションを使用
+            // GIT_AUTHOR_DATE と GIT_COMMITTER_DATE の両方を設定
+            const { stdout, stderr } = await execFileAsync('git', [
+                'commit',
+                '-m', message,
+                '--date', dateString
+            ], {
+                cwd: repoPath,
+                env: {
+                    ...process.env,
+                    GIT_AUTHOR_DATE: dateString,
+                    GIT_COMMITTER_DATE: dateString
+                }
+            });
+
+            if (stdout) {console.log('[GitService] commit stdout:', stdout);}
+            if (stderr) {console.log('[GitService] commit stderr:', stderr);}
+
+            return true;
+        } catch (error: unknown) {
+            console.error('[GitService] Failed to commit with date:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to commit: ${errorMessage}`);
             return false;
         }
     }

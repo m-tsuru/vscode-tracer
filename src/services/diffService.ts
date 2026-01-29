@@ -17,16 +17,39 @@ export interface DiffStats {
  */
 export class DiffService {
     /**
-     * 2つのテキストから Unified Diff を生成
+     * 2つのテキストから git apply 互換の Unified Diff を生成
      * @param oldContent 古い内容
      * @param newContent 新しい内容
      * @param filePath ファイルパス（パッチのヘッダーに使用）
      */
     createUnifiedDiff(oldContent: string, newContent: string, filePath: string): string {
-        const oldFileName = `a/${filePath}`;
-        const newFileName = `b/${filePath}`;
+        // createPatch(fileName, oldStr, newStr, oldHeader, newHeader, options)
+        const patch = createPatch(filePath, oldContent, newContent, '', '', { context: 3 });
 
-        return createPatch(filePath, oldContent, newContent, oldFileName, newFileName);
+        // git apply 互換の形式に変換
+        // "Index: file" 行を削除し、"--- file" を "--- a/file" に変更
+        const lines = patch.split('\n');
+        const result: string[] = [];
+
+        for (const line of lines) {
+            // Index: 行と === 行をスキップ
+            if (line.startsWith('Index: ') || line.startsWith('===')) {
+                continue;
+            }
+            // --- 行を修正
+            if (line.startsWith('--- ')) {
+                result.push(`--- a/${filePath}`);
+                continue;
+            }
+            // +++ 行を修正
+            if (line.startsWith('+++ ')) {
+                result.push(`+++ b/${filePath}`);
+                continue;
+            }
+            result.push(line);
+        }
+
+        return result.join('\n');
     }
 
     /**

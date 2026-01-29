@@ -209,27 +209,68 @@ export async function activate(context: vscode.ExtensionContext) {
                     case 'selectEntries':
                         // 選択された履歴エントリを更新
                         selectedEntries = message.indices.map((i: number) => historyEntries[i]);
+                        console.log('[Tracer] Selected entries:', selectedEntries.length);
                         break;
 
                     case 'stageDiff':
                         // 選択された差分をステージング
                         {
+                            console.log('[Tracer] stageDiff called, selectedEntries:', selectedEntries.length);
+
                             if (selectedEntries.length === 0) {
                                 vscode.window.showWarningMessage('Please select history entries first');
                                 return;
                             }
 
-                            const result = await diffService.createMergedDiff(selectedEntries, currentFileUri);
-                            if (!result) {
-                                vscode.window.showErrorMessage('Failed to create diff');
+                            // 選択された履歴エントリの内容を取得
+                            const historyContent = await localHistoryService.getHistoryContent(selectedEntries[0]);
+                            if (historyContent === undefined) {
+                                vscode.window.showErrorMessage('Failed to read history content');
                                 return;
                             }
 
-                            const success = await diffService.applyPatchToStaging(result.patch, currentFileUri);
+                            // HEAD の内容を取得
+                            const relativePath = diffService.toRelativePath(currentFileUri.fsPath);
+                            const headContent = await gitService.getFileContent('HEAD', relativePath, currentFileUri) || '';
+
+                            // 統計情報を計算
+                            const patch = diffService.createUnifiedDiff(headContent, historyContent, relativePath);
+                            const stats = diffService.calculateDiffStats(patch);
+
+                            console.log('[Tracer] Staging - HEAD length:', headContent.length, ', History length:', historyContent.length);
+                            console.log('[Tracer] Generated patch:\n', patch);
+
+                            // パッチを適用
+                            const success = await gitService.applyPatchToIndex(patch, currentFileUri);
                             if (success) {
-                                vscode.window.showInformationMessage(
-                                    `Staged changes: +${result.stats.additions} -${result.stats.deletions}`
+                                // 選択された履歴エントリの最も古い日時を取得
+                                const oldestEntry = selectedEntries.reduce((oldest, entry) =>
+                                    entry.timestamp < oldest.timestamp ? entry : oldest
                                 );
+                                const commitDate = oldestEntry.timestamp;
+
+                                // コミットメッセージを入力
+                                const commitMessage = await vscode.window.showInputBox({
+                                    prompt: `コミットメッセージを入力 (コミット日時: ${commitDate.toLocaleString()})`,
+                                    placeHolder: 'Commit message...',
+                                    value: `[Tracer] Restore from local history (${commitDate.toLocaleString()})`
+                                });
+
+                                if (commitMessage) {
+                                    // 日時指定でコミット
+                                    const commitSuccess = await gitService.commitWithDate(commitMessage, commitDate, currentFileUri);
+                                    if (commitSuccess) {
+                                        vscode.window.showInformationMessage(
+                                            `Committed: +${stats.additions} -${stats.deletions} (date: ${commitDate.toLocaleString()})`
+                                        );
+                                        // 履歴リストを更新するためにパネルをリフレッシュ
+                                        // TODO: 履歴の再読み込み
+                                    }
+                                } else {
+                                    vscode.window.showInformationMessage(
+                                        `Staged changes: +${stats.additions} -${stats.deletions} (not committed)`
+                                    );
+                                }
                             }
                         }
                         break;
