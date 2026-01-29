@@ -105,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // HEAD のコミット日時より新しい履歴エントリのみをフィルタリング
             // headCommitDate が undefined の場合は全ての履歴を表示
-            const historyEntries = headCommitDate 
+            const historyEntries = headCommitDate
                 ? allHistoryEntries.filter(entry => entry.timestamp.getTime() > headCommitDate.getTime())
                 : allHistoryEntries;
 
