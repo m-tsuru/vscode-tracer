@@ -16,11 +16,25 @@ body {
 /* 履歴パネル（上部） */
 .history-panel {
     height: 200px;
-    min-height: 100px;
-    border-bottom: 1px solid var(--vscode-panel-border);
+    min-height: 80px;
+    max-height: calc(100vh - 100px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+/* リサイザー（ドラッグ可能な分割線） */
+.resizer {
+    height: 4px;
+    background-color: var(--vscode-panel-border);
+    cursor: ns-resize;
+    flex-shrink: 0;
+    transition: background-color 0.15s;
+}
+
+.resizer:hover,
+.resizer.resizing {
+    background-color: var(--vscode-focusBorder, #007acc);
 }
 
 /* 差分ビューア（下部） */

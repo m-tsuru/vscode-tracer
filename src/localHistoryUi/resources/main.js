@@ -235,6 +235,50 @@ document.getElementById('commit-btn')?.addEventListener('click', () => {
     vscode.postMessage({ command: 'commitDiff' });
 });
 
+// リサイザーのドラッグ処理
+(function setupResizer() {
+    const resizer = document.getElementById('resizer');
+    const historyPanel = document.querySelector('.history-panel');
+
+    if (!resizer || !historyPanel) {return;}
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = historyPanel.offsetHeight;
+        resizer.classList.add('resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) {return;}
+
+        const deltaY = e.clientY - startY;
+        const newHeight = Math.max(80, Math.min(startHeight + deltaY, window.innerHeight - 100));
+        historyPanel.style.height = `${newHeight}px`;
+
+        // Monaco Editor のレイアウトを更新
+        if (diffEditor) {
+            diffEditor.layout();
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            resizer.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+})();
+
 // Monaco Editor の初期化（require を使用）
 require(['vs/editor/editor.main'], function () {
     initializeMonaco();
