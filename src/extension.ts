@@ -354,9 +354,14 @@ export async function activate(context: vscode.ExtensionContext) {
                                         // TODO: 履歴の再読み込み
                                     }
                                 } else {
-                                    vscode.window.showInformationMessage(
-                                        `Staged changes: +${stats.additions} -${stats.deletions} (not committed)`
-                                    );
+                                    // コミットをキャンセルした場合、ステージングを取り消す
+                                    console.log('[Tracer] Commit cancelled, unstaging changes...');
+                                    const unstageSuccess = await gitService.unstageFiles(relativePath, currentFileUri);
+                                    if (unstageSuccess) {
+                                        vscode.window.showInformationMessage('Commit cancelled, changes unstaged');
+                                    } else {
+                                        vscode.window.showWarningMessage('Commit cancelled, but failed to unstage changes');
+                                    }
                                 }
                             }
                         }

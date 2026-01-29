@@ -197,6 +197,43 @@ export class GitService {
     }
 
     /**
+     * ステージングエリアの変更を取り消す（git reset）
+     * @param filePath 相対パス（省略時は全てのステージング変更を取り消す）
+     */
+    async unstageFiles(filePath?: string, workspaceUri?: vscode.Uri): Promise<boolean> {
+        const repo = this.getRepository(workspaceUri);
+        if (!repo) {
+            console.error('[GitService] No repository found');
+            return false;
+        }
+
+        try {
+            const repoPath = repo.rootUri.fsPath;
+            const args = ['reset', 'HEAD'];
+
+            if (filePath) {
+                args.push('--', filePath);
+            }
+
+            console.log('[GitService] Executing git reset:', args.join(' '));
+            const { stdout, stderr } = await execFileAsync('git', args, {
+                cwd: repoPath
+            });
+
+            if (stdout) {console.log('[GitService] stdout:', stdout);}
+            if (stderr) {console.log('[GitService] stderr:', stderr);}
+
+            console.log('[GitService] Successfully unstaged', filePath || 'all files');
+            return true;
+        } catch (error: unknown) {
+            console.error('[GitService] Failed to unstage:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to unstage: ${errorMessage}`);
+            return false;
+        }
+    }
+
+    /**
      * コミットを実行
      */
     async commit(message: string, workspaceUri?: vscode.Uri): Promise<boolean> {
