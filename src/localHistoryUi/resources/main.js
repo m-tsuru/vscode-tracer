@@ -206,6 +206,10 @@ window.addEventListener('message', (event) => {
         createOrUpdateDiffEditor(editorConfig);
         break;
 
+    case 'setHistoryData':
+        renderHistoryList(message.data, message.fileName, message.filePath, message.head);
+        break;
+
     case 'setDiff':
         if (diffEditor) {
             const language = message.language || 'plaintext';
@@ -220,19 +224,256 @@ window.addEventListener('message', (event) => {
             if (message.filename) {
                 document.getElementById('diff-filename').textContent = message.filename;
             }
+
+            // Diff 統計を更新
+            if (message.stats) {
+                updateDiffStats(message.stats.additions, message.stats.deletions);
+            }
         }
         break;
     }
 });
 
-// 履歴行をクリックした時の処理
-document.getElementById('history-table')?.addEventListener('vsc-select', (e) => {
-    vscode.postMessage({ command: 'showDiff', data: e.detail });
+// 履歴データと選択状態
+let historyData = [];
+let selectedIndices = new Set();
+let currentFileName = '';
+let currentFilePath = '';
+let headCommit = '';
+let diffSizes = {}; // index => { additions, deletions }
+
+/**
+ * 履歴リストをレンダリング
+ */
+function renderHistoryList(data, fileName, filePath, head) {
+    historyData = data || [];
+    currentFileName = fileName || '';
+    currentFilePath = filePath || '';
+    headCommit = head || 'HEAD';
+
+    const tableBody = document.getElementById('history-table-body');
+    const panelTitle = document.getElementById('panel-title');
+
+    if (panelTitle) {
+        panelTitle.textContent = `履歴: ${currentFileName}`;
+    }
+
+    if (!tableBody) {return;}
+
+    // HEAD を初期選択状態にする
+    selectedIndices.clear();
+    selectedIndices.add(-1);
+
+    // 先頭行: 現在のコミット HEAD（初期状態でチェック済み）
+    let html = `
+        <vscode-table-row data-index="-1" selected>
+            <vscode-table-cell>
+                <vscode-checkbox class="row-checkbox" data-index="-1" checked></vscode-checkbox>
+            </vscode-table-cell>
+            <vscode-table-cell><strong>HEAD</strong> (${headCommit.substring(0, 7)})</vscode-table-cell>
+            <vscode-table-cell>現在</vscode-table-cell>
+            <vscode-table-cell>&ndash;</vscode-table-cell>
+            <vscode-table-cell>
+                <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="-1">
+                    <vscode-icon name="eye"></vscode-icon>
+                </vscode-button>
+            </vscode-table-cell>
+        </vscode-table-row>
+    `;
+
+    historyData.forEach((entry, index) => {
+        const date = new Date(entry.timestamp);
+        const formattedDate = formatDate(date);
+        const diffSize = diffSizes[index];
+        const diffSizeStr = diffSize ? `<span class="additions">+${diffSize.additions}</span> <span class="deletions">-${diffSize.deletions}</span>` : '&ndash;';
+
+        html += `
+            <vscode-table-row data-index="${index}">
+                <vscode-table-cell>
+                    <vscode-checkbox class="row-checkbox" data-index="${index}"></vscode-checkbox>
+                </vscode-table-cell>
+                <vscode-table-cell>${entry.source}</vscode-table-cell>
+                <vscode-table-cell>${formattedDate}</vscode-table-cell>
+                <vscode-table-cell>${diffSizeStr}</vscode-table-cell>
+                <vscode-table-cell>
+                    <vscode-button appearance="icon" aria-label="Open" data-action="open" data-index="${index}">
+                        <vscode-icon name="eye"></vscode-icon>
+                    </vscode-button>
+                </vscode-table-cell>
+            </vscode-table-row>
+        `;
+    });
+
+    tableBody.innerHTML = html;
+
+    // イベントリスナーを設定
+    setupHistoryListeners();
+}
+
+/**
+ * 日付をフォーマット
+ */
+function formatDate(date) {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+
+    // 24時間以内なら相対時間
+    if (diff < 24 * 60 * 60 * 1000) {
+        const hours = Math.floor(diff / (60 * 60 * 1000));
+        const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+        if (hours > 0) {
+            return `${hours}時間前`;
+        }
+        return `${minutes}分前`;
+    }
+
+    // それ以外は日時
+    return date.toLocaleString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * 履歴リストのイベントリスナーを設定
+ */
+function setupHistoryListeners() {
+    const tableBody = document.getElementById('history-table-body');
+    if (!tableBody) {return;}
+
+    // チェックボックス変更イベント
+    tableBody.querySelectorAll('.row-checkbox').forEach((checkbox) => {
+        checkbox.addEventListener('change', (e) => {
+            const index = parseInt(e.target.dataset.index, 10);
+            if (e.target.checked) {
+                selectedIndices.add(index);
+            } else {
+                selectedIndices.delete(index);
+            }
+            updateSelectionUI();
+            requestDiffForSelection();
+        });
+    });
+
+    // アクションボタンクリック
+    tableBody.querySelectorAll('[data-action]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            const action = btn.dataset.action;
+            const index = parseInt(btn.dataset.index, 10);
+
+            if (action === 'open') {
+                if (index === -1) {
+                    // HEAD は現在のファイルを開く
+                    vscode.postMessage({ command: 'openCurrentFile' });
+                } else {
+                    vscode.postMessage({ command: 'openInEditor', index });
+                }
+            }
+        });
+    });
+}
+
+/**
+ * 選択状態のUIを更新
+ */
+function updateSelectionUI() {
+    const rows = document.querySelectorAll('vscode-table-row');
+    rows.forEach((row) => {
+        const index = parseInt(row.dataset.index, 10);
+        if (selectedIndices.has(index)) {
+            row.setAttribute('selected', '');
+        } else {
+            row.removeAttribute('selected');
+        }
+    });
+
+    // ステージボタンの有効/無効
+    const stageBtn = document.getElementById('stage-btn');
+    if (stageBtn) {
+        stageBtn.disabled = selectedIndices.size < 2;
+    }
+
+    // 選択されたインデックスを拡張機能に通知
+    vscode.postMessage({
+        command: 'selectEntries',
+        indices: Array.from(selectedIndices).filter(i => i >= 0) // -1（現在のファイル）は除外
+    });
+}
+
+/**
+ * 選択に基づいて差分を要求
+ */
+function requestDiffForSelection() {
+    const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+
+    if (indices.length < 2) {
+        // 1つだけ選択されている場合、現在のファイルとの差分を表示
+        if (indices.length === 1) {
+            const index = indices[0];
+            if (index === -1) {
+                // 現在のファイルのみ選択 → 差分なし
+                return;
+            }
+            // 履歴エントリと現在のファイルの差分
+            vscode.postMessage({
+                command: 'requestDiff',
+                oldIndex: index,
+                newIndex: -1
+            });
+        }
+        return;
+    }
+
+    // 2つ以上選択されている場合、最も古いものと最も新しいものの差分
+    const oldIndex = indices[indices.length - 1]; // 最も古い（インデックスが大きい）
+    const newIndex = indices[0]; // 最も新しい（インデックスが小さい or -1）
+
+    vscode.postMessage({
+        command: 'requestDiff',
+        oldIndex,
+        newIndex
+    });
+}
+
+/**
+ * Diff統計を更新
+ */
+function updateDiffStats(additions, deletions) {
+    const statsEl = document.getElementById('diff-stats');
+    if (statsEl) {
+        statsEl.innerHTML = `
+            <span class="additions">+${additions}</span>
+            <span class="deletions">-${deletions}</span>
+        `;
+    }
+}
+
+// ステージボタン
+document.getElementById('stage-btn')?.addEventListener('click', () => {
+    vscode.postMessage({ command: 'stageDiff' });
 });
 
-// コミットボタン
-document.getElementById('commit-btn')?.addEventListener('click', () => {
-    vscode.postMessage({ command: 'commitDiff' });
+// VS Code Diff で開くボタン
+document.getElementById('open-vscode-diff-btn')?.addEventListener('click', () => {
+    const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+    if (indices.length >= 2) {
+        const oldIndex = indices[indices.length - 1];
+        const newIndex = indices[0];
+        vscode.postMessage({
+            command: 'showVSCodeDiff',
+            oldIndex,
+            newIndex
+        });
+    } else if (indices.length === 1 && indices[0] !== -1) {
+        vscode.postMessage({
+            command: 'showVSCodeDiff',
+            oldIndex: indices[0],
+            newIndex: -1
+        });
+    }
 });
 
 // リサイザーのドラッグ処理

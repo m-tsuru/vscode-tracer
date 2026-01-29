@@ -10,61 +10,48 @@
     <div class="container">
         <aside class="history-panel">
             <header>
-                <span>ローカル履歴</span>
-                <vscode-button appearance="icon" aria-label="Refresh">
-                    <vscode-icon name="refresh"></vscode-icon>
-                </vscode-button>
+                <span id="panel-title">ローカル履歴</span>
+                <div class="header-actions">
+                    <vscode-button appearance="icon" aria-label="Refresh" id="refresh-btn">
+                        <span class="codicon codicon-refresh"></span>
+                    </vscode-button>
+                </div>
             </header>
 
-            <vscode-table id="history-table">
+            <vscode-table id="history-table" zebra responsive>
                 <vscode-table-header slot="header">
-                    <vscode-table-header-cell>
-                        <vscode-checkbox id="select-all"></vscode-checkbox>
-                    </vscode-table-header-cell>
+                    <vscode-table-header-cell></vscode-table-header-cell>
                     <vscode-table-header-cell>SOURCE</vscode-table-header-cell>
                     <vscode-table-header-cell>CREATE DATE</vscode-table-header-cell>
                     <vscode-table-header-cell>DIFF SIZE</vscode-table-header-cell>
                     <vscode-table-header-cell>Open</vscode-table-header-cell>
                 </vscode-table-header>
-                <vscode-table-body>
-                    <vscode-table-row>
-                        <vscode-table-cell>
-                            <vscode-checkbox id="select"></vscode-checkbox>
-                        </vscode-table-cell>
-                        <vscode-table-cell>&ndash;</vscode-table-cell>
-                        <vscode-table-cell>2024/05/20 14:30</vscode-table-cell>
-                        <vscode-table-cell>+12 -5</vscode-table-cell>
-                        <vscode-table-cell>
-                            <vscode-button appearance="icon" aria-label="Open">
-                                <vscode-icon name="eye"></vscode-icon>
-                            </vscode-button>
-                        </vscode-table-cell>
-                    </vscode-table-row>
-                    <vscode-table-row>
-                        <vscode-table-cell>
-                            <vscode-checkbox id="select"></vscode-checkbox>
-                        </vscode-table-cell>
-                        <vscode-table-cell>&ndash;</vscode-table-cell>
-                        <vscode-table-cell>2024/05/20 14:30</vscode-table-cell>
-                        <vscode-table-cell>+12 -5</vscode-table-cell>
-                        <vscode-table-cell>
-                            <vscode-button appearance="icon" aria-label="Open">
-                                <vscode-icon name="eye"></vscode-icon>
-                            </vscode-button>
-                        </vscode-table-cell>
-                    </vscode-table-row>
+                <vscode-table-body id="history-table-body">
+                    <!-- 履歴エントリはJavaScriptで動的に生成 -->
                 </vscode-table-body>
             </vscode-table>
+
+            <footer class="history-footer">
+                <div class="diff-stats" id="diff-stats">
+                    <span class="additions">+0</span>
+                    <span class="deletions">-0</span>
+                </div>
+                <vscode-button id="stage-btn" appearance="primary" disabled>
+                    選択した差分をステージ
+                </vscode-button>
+            </footer>
         </aside>
 
         <div class="resizer" id="resizer"></div>
 
         <main class="diff-viewer">
             <header>
-                <span>差分プレビュー: <code id="diff-filename">extension.ts</code></span>
-                <vscode-button id="commit-btn" appearance="primary">
-                    この差分のみステージ
-                </vscode-button>
+                <span>差分プレビュー: <code id="diff-filename">-</code></span>
+                <div class="header-actions">
+                    <vscode-button id="open-vscode-diff-btn" appearance="secondary">
+                        VS Code Diff で開く
+                    </vscode-button>
+                </div>
             </header>
 
             <div class="diff-content">

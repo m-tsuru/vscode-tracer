@@ -4,6 +4,10 @@ body {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
 }
 
 .container {
@@ -15,12 +19,13 @@ body {
 
 /* 履歴パネル（上部） */
 .history-panel {
-    height: 200px;
-    min-height: 80px;
+    height: 250px;
+    min-height: 120px;
     max-height: calc(100vh - 100px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background-color: var(--vscode-sideBar-background);
 }
 
 /* リサイザー（ドラッグ可能な分割線） */
@@ -47,10 +52,17 @@ body {
 }
 
 header {
-    padding: 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--vscode-panel-border);
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
     align-items: center;
 }
 
@@ -66,4 +78,72 @@ header {
     left: 0;
     right: 0;
     bottom: 0;
+}
+
+/* 履歴テーブル */
+#history-table {
+    flex: 1;
+    overflow: auto;
+}
+
+vscode-table-row[selected] {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+vscode-table-row[data-index="-1"] {
+    background-color: var(--vscode-editor-background);
+    font-weight: 600;
+}
+
+/* Diff サイズの色 */
+vscode-table-cell .additions {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #4ec9b0);
+}
+
+vscode-table-cell .deletions {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+}
+
+/* フッター */
+.history-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.diff-stats {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.diff-stats .additions {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #4ec9b0);
+}
+
+.diff-stats .deletions {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+}
+
+/* Codicon スタイル（アイコン用） */
+.codicon {
+    font-family: codicon;
+    font-size: 16px;
+}
+
+.codicon-refresh::before {
+    content: "\\eb37";
+}
+
+.codicon-eye::before {
+    content: "\\ea70";
+}
+
+.codicon-check::before {
+    content: "\\eab2";
 }
