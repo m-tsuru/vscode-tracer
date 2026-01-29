@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline' 'unsafe-eval' blob:; worker-src ${cspSource} blob:; font-src ${cspSource} data:;">
     <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
@@ -29,8 +29,6 @@
                 </vscode-table-body>
             </vscode-table>
         </aside>
-
-        <div class="resizer" id="resizer"></div>
 
         <main class="diff-viewer">
             <header>

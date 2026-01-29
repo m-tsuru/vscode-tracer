@@ -94,24 +94,19 @@ function initializeMonaco() {
     const insertedTextBorder = getColor('--vscode-diffEditor-insertedTextBorder');
     const removedTextBorder = getColor('--vscode-diffEditor-removedTextBorder');
 
+    // フォールバック色（VS Code のデフォルトに近い色）
+    const defaultInsertedBg = isDarkTheme ? '#9bb95533' : '#9ccc2c33';
+    const defaultRemovedBg = isDarkTheme ? '#ff000033' : '#ff000033';
+
     // テキストのハイライト（インライン差分）
-    if (insertedTextBg) {colors['diffEditor.insertedTextBackground'] = insertedTextBg;}
-    if (removedTextBg) {colors['diffEditor.removedTextBackground'] = removedTextBg;}
+    colors['diffEditor.insertedTextBackground'] = insertedTextBg || defaultInsertedBg;
+    colors['diffEditor.removedTextBackground'] = removedTextBg || defaultRemovedBg;
     if (insertedTextBorder) {colors['diffEditor.insertedTextBorder'] = insertedTextBorder;}
     if (removedTextBorder) {colors['diffEditor.removedTextBorder'] = removedTextBorder;}
 
     // 行全体の背景色
-    if (insertedLineBg) {
-        colors['diffEditor.insertedLineBackground'] = insertedLineBg;
-    } else if (insertedTextBg) {
-        colors['diffEditor.insertedLineBackground'] = insertedTextBg;
-    }
-
-    if (removedLineBg) {
-        colors['diffEditor.removedLineBackground'] = removedLineBg;
-    } else if (removedTextBg) {
-        colors['diffEditor.removedLineBackground'] = removedTextBg;
-    }
+    colors['diffEditor.insertedLineBackground'] = insertedLineBg || insertedTextBg || defaultInsertedBg;
+    colors['diffEditor.removedLineBackground'] = removedLineBg || removedTextBg || defaultRemovedBg;
 
     if (diagonalFill) {colors['diffEditor.diagonalFill'] = diagonalFill;}
 
@@ -120,6 +115,10 @@ function initializeMonaco() {
     const removedGutterBg = getColor('--vscode-diffEditorGutter-removedLineBackground');
     if (addedGutterBg) {colors['diffEditorGutter.insertedLineBackground'] = addedGutterBg;}
     if (removedGutterBg) {colors['diffEditorGutter.removedLineBackground'] = removedGutterBg;}
+
+    // デバッグ: 設定されている色を出力
+    console.log('Monaco theme colors:', colors);
+    console.log('isDarkTheme:', isDarkTheme);
 
     monaco.editor.defineTheme('vscode-tracer-theme', {
         base: isDarkTheme ? 'vs-dark' : 'vs',
@@ -144,12 +143,15 @@ function createOrUpdateDiffEditor(config = {}) {
     const options = {
         automaticLayout: true,
         readOnly: true,
-        renderSideBySide: false,
-        useInlineViewWhenSpaceIsLimited: false,
+        // Diff Editor 固有のオプション
+        renderSideBySide: true,
+        enableSplitViewResizing: true,
         ignoreTrimWhitespace: false,
         renderIndicators: true,
+        renderMarginRevertIcon: true,
         originalEditable: false,
-        // VS Code の設定を適用
+        diffWordWrap: 'off',
+        // 共通エディタオプション
         fontSize: config.fontSize || 14,
         fontFamily: config.fontFamily || 'Menlo, Monaco, "Courier New", monospace',
         fontLigatures: config.fontLigatures || false,
@@ -178,48 +180,14 @@ function createOrUpdateDiffEditor(config = {}) {
         diffEditor = monaco.editor.createDiffEditor(container, options);
 
         // 初期表示用のサンプルデータ
-        const originalCode = `import * as vscode from 'vscode';
-
-export function activate(context: vscode.ExtensionContext) {
-    console.log('Extension is now active!');
-
-    const disposable = vscode.commands.registerCommand('hello', () => {
-        vscode.window.showInformationMessage('Hello World!');
-    });
-
-    context.subscriptions.push(disposable);
-}
-
-export function deactivate() {}
-`;
-
-        const modifiedCode = `import * as vscode from 'vscode';
-
-export function activate(context: vscode.ExtensionContext) {
-    console.log('Extension "tracer" is now active!');
-
-    const disposable = vscode.commands.registerCommand('tracer.openHistory', () => {
-        vscode.window.showInformationMessage('Opening History View...');
-        openHistoryPanel(context);
-    });
-
-    context.subscriptions.push(disposable);
-}
-
-function openHistoryPanel(context: vscode.ExtensionContext) {
-    const panel = vscode.window.createWebviewPanel(
-        'historyView',
-        'Local History',
-        vscode.ViewColumn.One,
-        { enableScripts: true }
-    );
-}
-
-export function deactivate() {}
-`;
-
-        const originalModel = monaco.editor.createModel(originalCode, 'typescript');
-        const modifiedModel = monaco.editor.createModel(modifiedCode, 'typescript');
+        const originalModel = monaco.editor.createModel(
+            '// 古いコード\nfunction hello() {\n    console.log("Hello");\n}\n',
+            'typescript'
+        );
+        const modifiedModel = monaco.editor.createModel(
+            '// 新しいコード\nfunction hello() {\n    console.log("Hello, World!");\n}\n\nfunction goodbye() {\n    console.log("Goodbye!");\n}\n',
+            'typescript'
+        );
 
         diffEditor.setModel({
             original: originalModel,
@@ -266,46 +234,6 @@ document.getElementById('history-table')?.addEventListener('vsc-select', (e) => 
 document.getElementById('commit-btn')?.addEventListener('click', () => {
     vscode.postMessage({ command: 'commitDiff' });
 });
-
-// リサイザーのドラッグ処理
-(function initResizer() {
-    const resizer = document.getElementById('resizer');
-    const historyPanel = document.querySelector('.history-panel');
-    const container = document.querySelector('.container');
-
-    if (!resizer || !historyPanel || !container) {return;}
-
-    let isResizing = false;
-    let startY = 0;
-    let startHeight = 0;
-
-    resizer.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        startY = e.clientY;
-        startHeight = historyPanel.offsetHeight;
-        resizer.classList.add('dragging');
-        document.body.style.cursor = 'ns-resize';
-        document.body.style.userSelect = 'none';
-        e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isResizing) {return;}
-
-        const deltaY = e.clientY - startY;
-        const newHeight = Math.max(80, Math.min(startHeight + deltaY, container.offsetHeight - 150));
-        historyPanel.style.height = `${newHeight}px`;
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isResizing) {
-            isResizing = false;
-            resizer.classList.remove('dragging');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        }
-    });
-})();
 
 // Monaco Editor の初期化（require を使用）
 require(['vs/editor/editor.main'], function () {
